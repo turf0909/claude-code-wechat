@@ -97,7 +97,7 @@ function cleanupOldMedia(): void {
         const stat = fs.statSync(filePath);
         if (now - stat.mtimeMs > MEDIA_MAX_AGE_MS) {
           fs.unlinkSync(filePath);
-          log(`清理过期文件: ${file}`);
+          log(`Cleaned up expired file: ${file}`);
         }
       } catch {}
     }
@@ -253,11 +253,11 @@ async function pollQRStatus(
 async function doQRLogin(
   baseUrl: string,
 ): Promise<AccountData | null> {
-  log("正在获取微信登录二维码...");
+  log("Fetching WeChat login QR code...");
   const qrResp = await fetchQRCode(baseUrl);
 
   const qrUrl = qrResp.qrcode_img_content;
-  log(`\n扫码链接: ${qrUrl}\n`);
+  log(`\nQR scan link: ${qrUrl}\n`);
 
   // Push QR link to Claude Code UI (stderr may be invisible in MCP stdio mode)
   try {
@@ -280,7 +280,7 @@ async function doQRLogin(
     });
   } catch {}
 
-  log("等待扫码...");
+  log("Waiting for QR scan...");
   const deadline = Date.now() + QR_LOGIN_TIMEOUT_MS;
   let scannedPrinted = false;
 
@@ -292,16 +292,16 @@ async function doQRLogin(
         break;
       case "scaned":
         if (!scannedPrinted) {
-          log("👀 已扫码，请在微信中确认...");
+          log("QR scanned, please confirm in WeChat...");
           scannedPrinted = true;
         }
         break;
       case "expired":
-        log("二维码已过期，请重新启动。");
+        log("QR code expired, please restart.");
         return null;
       case "confirmed": {
         if (!status.ilink_bot_id || !status.bot_token) {
-          logError("登录确认但未返回 bot 信息");
+          logError("Login confirmed but no bot info returned");
           return null;
         }
         const account: AccountData = {
@@ -312,14 +312,14 @@ async function doQRLogin(
           savedAt: new Date().toISOString(),
         };
         saveCredentials(account);
-        log("✅ 微信连接成功！");
+        log("WeChat connected successfully!");
         return account;
       }
     }
     await new Promise((r) => setTimeout(r, QR_POLL_DELAY_MS));
   }
 
-  log("登录超时");
+  log("Login timed out");
   return null;
 }
 
@@ -431,13 +431,13 @@ function extractContent(msg: WeixinMessage): ExtractedContent {
       return { kind: "text", text: item.voice_item.text };
     }
     if (item.type === MSG_ITEM_IMAGE) {
-      log(`图片消息原始数据: ${JSON.stringify(item)}`);
+      log(`Image message raw data: ${JSON.stringify(item)}`);
       if (item.image_item) return { kind: "image", imageItem: item.image_item };
       return { kind: "text", text: "[用户发送了一张图片，但无法获取图片数据]" };
     }
     if (item.type === MSG_ITEM_FILE) {
-      log(`文件消息原始数据: ${JSON.stringify(item)}`);
-      const name = item.file_item?.file_name || "未知文件";
+      log(`File message raw data: ${JSON.stringify(item)}`);
+      const name = item.file_item?.file_name || "unknown_file";
       if (item.file_item?.media?.encrypt_query_param && item.file_item?.media?.aes_key) {
         return { kind: "file", fileItem: item.file_item, fileName: name };
       }
@@ -449,7 +449,7 @@ function extractContent(msg: WeixinMessage): ExtractedContent {
       return { kind: "text", text: `[用户分享了链接: ${title} ${url}]` };
     }
     // Unknown type - log for debugging
-    log(`未知消息类型 type=${item.type}，原始数据: ${JSON.stringify(item)}`);
+    log(`Unknown message type=${item.type}, raw data: ${JSON.stringify(item)}`);
   }
   return null;
 }
@@ -552,7 +552,7 @@ async function uploadBufferToCdn(params: {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (lastError.message.includes("4xx, no retry")) throw lastError;
       if (attempt < CDN_UPLOAD_MAX_RETRIES) {
-        log(`CDN 上传失败 (attempt ${attempt}/${CDN_UPLOAD_MAX_RETRIES}): ${lastError.message}, 重试中...`);
+        log(`CDN upload failed (attempt ${attempt}/${CDN_UPLOAD_MAX_RETRIES}): ${lastError.message}, retrying...`);
         await new Promise((r) => setTimeout(r, CDN_UPLOAD_RETRY_DELAY_MS));
       }
     }
@@ -581,7 +581,7 @@ async function uploadAndSendMedia(
   const isImage = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"].includes(ext);
   const mediaType = isImage ? UPLOAD_MEDIA_TYPE.IMAGE : UPLOAD_MEDIA_TYPE.FILE;
 
-  log(`上传文件: ${fileName} size=${rawsize} type=${isImage ? "image" : "file"}`);
+  log(`Uploading file: ${fileName} size=${rawsize} type=${isImage ? "image" : "file"}`);
 
   const uploadResp = await getUploadUrl(baseUrl, token, {
     filekey,
@@ -601,7 +601,7 @@ async function uploadAndSendMedia(
     filekey,
     aeskey,
   });
-  log(`CDN 上传成功: filekey=${filekey}`);
+  log(`CDN upload successful: filekey=${filekey}`);
 
   const aesKeyBase64 = Buffer.from(aeskey.toString("hex")).toString("base64");
   const media = { encrypt_query_param: downloadParam, aes_key: aesKeyBase64, encrypt_type: 1 };
@@ -633,7 +633,7 @@ async function uploadAndSendMedia(
     token,
     timeoutMs: API_TIMEOUT_MS,
   });
-  log(`媒体消息发送成功: ${fileName}`);
+  log(`Media message sent: ${fileName}`);
 }
 
 const CDN_DOWNLOAD_TIMEOUT_MS = 30_000;
@@ -644,21 +644,21 @@ async function downloadAndDecryptCdn(
   label: string,
 ): Promise<Buffer | null> {
   const cdnUrl = `${WECHAT_CDN_BASE}/download?encrypted_query_param=${encodeURIComponent(encryptQueryParam)}`;
-  log(`${label} CDN 下载: ${cdnUrl.slice(0, 150)}...`);
+  log(`${label} CDN download: ${cdnUrl.slice(0, 150)}...`);
 
   try {
     const key = parseAesKey(aesKeyBase64);
     const res = await fetchWithTimeout(cdnUrl, {}, CDN_DOWNLOAD_TIMEOUT_MS);
     if (!res.ok) {
-      logError(`${label} CDN 下载失败: HTTP ${res.status}`);
+      logError(`${label} CDN download failed: HTTP ${res.status}`);
       return null;
     }
     const encrypted = Buffer.from(await res.arrayBuffer());
     const decrypted = decryptAesEcb(encrypted, key);
-    log(`${label} 解密成功: ${decrypted.length} bytes`);
+    log(`${label} decrypted successfully: ${decrypted.length} bytes`);
     return decrypted;
   } catch (err) {
-    logError(`${label} 下载/解密异常: ${String(err)}`);
+    logError(`${label} download/decrypt error: ${String(err)}`);
     return null;
   }
 }
@@ -679,11 +679,11 @@ function mimeToExt(mimeType: string): string {
 
 async function downloadWechatImage(imageItem: ImageItem): Promise<{ buf: Buffer; mimeType: string } | null> {
   if (!imageItem.media?.encrypt_query_param || !imageItem.media?.aes_key) {
-    logError("图片缺少下载参数");
+    logError("Image missing download parameters");
     return null;
   }
   const decrypted = await downloadAndDecryptCdn(
-    imageItem.media.encrypt_query_param, imageItem.media.aes_key, "图片",
+    imageItem.media.encrypt_query_param, imageItem.media.aes_key, "Image",
   );
   if (!decrypted) return null;
   return { buf: decrypted, mimeType: detectImageMimeType(decrypted) };
@@ -691,11 +691,11 @@ async function downloadWechatImage(imageItem: ImageItem): Promise<{ buf: Buffer;
 
 async function downloadWechatFile(fileItem: FileItem, fileName: string): Promise<string | null> {
   if (!fileItem.media?.encrypt_query_param || !fileItem.media?.aes_key) {
-    logError("文件缺少下载参数");
+    logError("File missing download parameters");
     return null;
   }
   const decrypted = await downloadAndDecryptCdn(
-    fileItem.media.encrypt_query_param, fileItem.media.aes_key, `文件(${fileName})`,
+    fileItem.media.encrypt_query_param, fileItem.media.aes_key, `File(${fileName})`,
   );
   if (!decrypted) return null;
   const safeName = path.basename(fileName).replace(/[\x00-\x1f]/g, "_") || "unnamed";
@@ -747,7 +747,7 @@ function loadContextTokens(): void {
       }
     }
     pruneContextTokens();
-    log(`恢复 ${contextTokenCache.size} 个 context_token`);
+    log(`Restored ${contextTokenCache.size} context tokens`);
   } catch {}
 }
 
@@ -926,11 +926,11 @@ async function fetchAndCacheTypingTicket(
         nextFetchAt: now + CONFIG_CACHE_TTL_MS * (0.5 + Math.random() * 0.5),
         retryDelayMs: CONFIG_CACHE_INITIAL_RETRY_MS,
       });
-      log(`typingTicket ${entry ? "刷新" : "缓存"}成功 for ${userId}`);
+      log(`typingTicket ${entry ? "refreshed" : "cached"} for ${userId}`);
       return resp.typing_ticket;
     }
   } catch (err) {
-    log(`getconfig 失败 for ${userId}: ${String(err)}`);
+    log(`getconfig failed for ${userId}: ${String(err)}`);
   }
 
   const prevDelay = entry?.retryDelayMs ?? CONFIG_CACHE_INITIAL_RETRY_MS;
@@ -1007,13 +1007,13 @@ function stopTypingAndNotify(baseUrl: string, token: string, userId: string): vo
 const QR_RELOGIN_MAX_ATTEMPTS = 3;
 
 async function doQRReLogin(oldAccount: AccountData): Promise<AccountData> {
-  log("Token 过期，开始重新登录...");
+  log("Token expired, starting re-login...");
 
   for (let attempt = 1; attempt <= QR_RELOGIN_MAX_ATTEMPTS; attempt++) {
-    log(`重新登录 (${attempt}/${QR_RELOGIN_MAX_ATTEMPTS})...`);
+    log(`Re-login attempt (${attempt}/${QR_RELOGIN_MAX_ATTEMPTS})...`);
     const qrResp = await fetchQRCode(oldAccount.baseUrl);
     const qrUrl = qrResp.qrcode_img_content;
-    log(`请扫码重新登录: ${qrUrl}`);
+    log(`Please scan QR to re-login: ${qrUrl}`);
 
     try {
       await mcp.notification({
@@ -1038,7 +1038,7 @@ async function doQRReLogin(oldAccount: AccountData): Promise<AccountData> {
           savedAt: new Date().toISOString(),
         };
         saveCredentials(newAccount);
-        log(`重新登录成功: ${newAccount.accountId}`);
+        log(`Re-login successful: ${newAccount.accountId}`);
         try {
           await mcp.notification({
             method: "notifications/claude/channel",
@@ -1051,15 +1051,15 @@ async function doQRReLogin(oldAccount: AccountData): Promise<AccountData> {
         return newAccount;
       }
       if (status.status === "expired") {
-        log("二维码已过期，重新获取...");
+        log("QR code expired, fetching new one...");
         expired = true;
         break;
       }
       await new Promise((r) => setTimeout(r, QR_POLL_DELAY_MS));
     }
-    if (!expired) throw new Error("重新登录超时");
+    if (!expired) throw new Error("Re-login timed out");
   }
-  throw new Error(`重新登录失败: ${QR_RELOGIN_MAX_ATTEMPTS} 次尝试均未扫码`);
+  throw new Error(`Re-login failed: ${QR_RELOGIN_MAX_ATTEMPTS} attempts, no QR scan`);
 }
 
 // ── MCP Channel Server ──────────────────────────────────────────────────────
@@ -1256,12 +1256,12 @@ async function startPolling(account: AccountData): Promise<never> {
   const syncBufFile = path.join(CREDENTIALS_DIR, "sync_buf.txt");
   try {
     getUpdatesBuf = fs.readFileSync(syncBufFile, "utf-8");
-    log(`恢复上次同步状态 (${getUpdatesBuf.length} bytes)`);
+    log(`Restored previous sync state (${getUpdatesBuf.length} bytes)`);
   } catch {
     // ignore
   }
 
-  log("开始监听微信消息...");
+  log("Started listening for WeChat messages...");
 
   while (true) {
     try {
@@ -1276,7 +1276,7 @@ async function startPolling(account: AccountData): Promise<never> {
           resp.errcode === SESSION_EXPIRED_ERRCODE || resp.ret === SESSION_EXPIRED_ERRCODE;
 
         if (isSessionExpired) {
-          logError("Session 过期 (errcode -14)，触发重新登录...");
+          logError("Session expired (errcode -14), triggering re-login...");
           try {
             const newAccount = await doQRReLogin(account);
             account = newAccount;
@@ -1285,23 +1285,23 @@ async function startPolling(account: AccountData): Promise<never> {
             token = newAccount.token;
             getUpdatesBuf = "";
             consecutiveFailures = 0;
-            log("已切换到新 token，继续监听...");
+            log("Switched to new token, resuming polling...");
             continue;
           } catch (err) {
-            logError(`重新登录失败: ${String(err)}`);
-            // 删除失效凭据，下次 start.sh 会走 setup.js 终端扫码
-            try { fs.unlinkSync(CREDENTIALS_FILE); log("已删除失效凭据"); } catch {}
+            logError(`Re-login failed: ${String(err)}`);
+            // Remove invalid credentials so next start.sh run triggers setup.js QR login
+            try { fs.unlinkSync(CREDENTIALS_FILE); log("Removed invalid credentials"); } catch {}
             process.exit(1);
           }
         }
 
         consecutiveFailures++;
         logError(
-          `getUpdates 失败: ret=${resp.ret} errcode=${resp.errcode} errmsg=${resp.errmsg ?? ""}`,
+          `getUpdates failed: ret=${resp.ret} errcode=${resp.errcode} errmsg=${resp.errmsg ?? ""}`,
         );
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
           logError(
-            `连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，等待 ${BACKOFF_DELAY_MS / 1000}s`,
+            `${MAX_CONSECUTIVE_FAILURES} consecutive failures, backing off ${BACKOFF_DELAY_MS / 1000}s`,
           );
           consecutiveFailures = 0;
           await new Promise((r) => setTimeout(r, BACKOFF_DELAY_MS));
@@ -1357,19 +1357,19 @@ async function startPolling(account: AccountData): Promise<never> {
         }
 
         if (content.kind === "text") {
-          log(`收到消息: from=${senderId}${isGroup ? ` group=${msg.group_id}` : ""} text=${content.text.slice(0, 50)}...`);
+          log(`Message received: from=${senderId}${isGroup ? ` group=${msg.group_id}` : ""} text=${content.text.slice(0, 50)}...`);
           await mcp.notification({
             method: "notifications/claude/channel",
             params: { content: content.text, meta },
           });
         } else if (content.kind === "image") {
-          log(`收到图片: from=${senderId}`);
+          log(`Image received: from=${senderId}`);
           const img = await downloadWechatImage(content.imageItem);
           if (img) {
             const ext = mimeToExt(img.mimeType);
             const imgPath = path.join(MEDIA_DIR, `img_${Date.now()}.${ext}`);
             fs.writeFileSync(imgPath, img.buf);
-            log(`图片已保存到: ${imgPath}`);
+            log(`Image saved to: ${imgPath}`);
             meta.media_type = "image";
             meta.media_path = imgPath;
             await mcp.notification({
@@ -1383,10 +1383,10 @@ async function startPolling(account: AccountData): Promise<never> {
             });
           }
         } else if (content.kind === "file") {
-          log(`收到文件: from=${senderId} name=${content.fileName}`);
+          log(`File received: from=${senderId} name=${content.fileName}`);
           const filePath = await downloadWechatFile(content.fileItem, content.fileName);
           if (filePath) {
-            log(`文件已保存到: ${filePath}`);
+            log(`File saved to: ${filePath}`);
             meta.media_type = "file";
             meta.media_path = filePath;
             await mcp.notification({
@@ -1403,7 +1403,7 @@ async function startPolling(account: AccountData): Promise<never> {
       }
     } catch (err) {
       consecutiveFailures++;
-      logError(`轮询异常: ${String(err)}`);
+      logError(`Polling error: ${String(err)}`);
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         consecutiveFailures = 0;
         await new Promise((r) => setTimeout(r, BACKOFF_DELAY_MS));
@@ -1421,7 +1421,7 @@ let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 async function main() {
   // Connect MCP transport first (Claude Code expects stdio handshake)
   await mcp.connect(new StdioServerTransport());
-  log("MCP 连接就绪");
+  log("MCP connection ready");
 
   // Ensure data directories exist
   fs.mkdirSync(CREDENTIALS_DIR, { recursive: true });
@@ -1446,14 +1446,14 @@ async function main() {
   let account = loadCredentials();
 
   if (!account) {
-    log("未找到已保存的凭据，启动微信扫码登录...");
+    log("No saved credentials found, starting WeChat QR login...");
     account = await doQRLogin(DEFAULT_BASE_URL);
     if (!account) {
-      logError("登录失败，退出。");
+      logError("Login failed, exiting.");
       process.exit(1);
     }
   } else {
-    log(`使用已保存账号: ${account.accountId}`);
+    log(`Using saved account: ${account.accountId}`);
   }
 
   activeAccount = account;
@@ -1463,7 +1463,7 @@ async function main() {
 }
 
 function shutdown(): void {
-  log("正在退出，保存状态...");
+  log("Shutting down, saving state...");
   if (cleanupInterval) clearInterval(cleanupInterval);
   if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
   persistContextTokens();

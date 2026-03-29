@@ -11,7 +11,7 @@ WeChat user sends a message
     |
 WeChat ClawBot -> ilink API (long polling)
     |
-wechat-channel MCP server (local stdio)
+Channel mode MCP server (local stdio)
     | notifications/claude/channel
 Claude Code receives message, generates response
     |
@@ -41,7 +41,7 @@ ilink/bot/sendmessage -> WeChat user receives reply
 
 - [Node.js](https://nodejs.org) >= 18
 - [Bun](https://bun.sh) >= 1.0 (for building; startup script auto-installs if missing)
-- Python 3 (startup script uses it for config reading and `.mcp.json` updates)
+- Python 3 (Channel mode uses it to update `.mcp.json`; not needed for SDK mode)
 - WeChat ClawBot (supports iOS and Android)
 
 **Channel mode requires:**
@@ -169,7 +169,7 @@ tmux kill-session -t wechat
 
 ## Mode Comparison
 
-| | Channel Mode (`start.sh`) | SDK Mode (`sdk-mode/start.sh`) |
+| | Channel Mode (`channel-mode/start.sh`) | SDK Mode (`sdk-mode/start.sh`) |
 |---|---|---|
 | Authentication | OAuth or API Key | **API Key only** |
 | Claude Code CLI | Required | **Not required** |
@@ -181,9 +181,9 @@ tmux kill-session -t wechat
 ## File Structure
 
 ```
-├── wechat-channel.ts    # Channel mode MCP server source
-├── setup.ts             # WeChat QR login tool
-├── cli.mjs              # CLI entry point (for npx)
+├── channel-mode/
+│   ├── main.ts          # Channel mode MCP server source
+│   └── start.sh         # Channel mode startup script
 ├── sdk-mode/
 │   ├── main.ts          # SDK mode main program
 │   ├── wechat-tools.ts  # SDK mode MCP tools (file sending)
@@ -192,11 +192,15 @@ tmux kill-session -t wechat
 │   ├── strip-bun-marker.cjs  # Post-build: remove // @bun marker
 │   ├── reset-login.sh        # Clear WeChat login state
 │   └── reset-all.sh          # Full reset (login + build + deps)
+├── setup.ts             # WeChat QR login tool (shared)
+├── cli.mjs              # CLI entry point (for npx)
+├── start.sh             # Root wrapper (delegates to channel-mode)
 ├── dist/                # Build output
-├── start.sh             # Channel mode startup script
 ├── .env.example         # Environment config template
 ├── .gitignore
-└── package.json
+├── tsconfig.json
+├── package.json
+└── LICENSE
 ```
 
 ## Data Storage

@@ -2,8 +2,8 @@
 /**
  * Claude Code WeChat Bot — Agent SDK Mode (Full-Featured)
  *
- * 使用 Claude Code Agent SDK 替代 MCP Channel，不需要 OAuth 登录。
- * 功能与 Channel 模式完全对齐：文字/图片/文件收发、输入状态、Token 重登录、日志轮转等。
+ * Uses Claude Code Agent SDK instead of MCP Channel; no OAuth login required.
+ * Feature-complete with Channel mode: text/image/file send & receive, typing indicator, token re-login, log rotation, etc.
  */
 
 import crypto from "node:crypto";
@@ -110,7 +110,7 @@ function cleanupOldMedia(): void {
         const stat = fs.statSync(filePath);
         if (now - stat.mtimeMs > MEDIA_MAX_AGE_MS) {
           fs.unlinkSync(filePath);
-          log(`清理过期文件: ${file}`);
+          log(`Cleaned up expired file: ${file}`);
         }
       } catch {}
     }
@@ -184,12 +184,12 @@ function extractContent(msg: WeixinMessage): ExtractedContent {
     if (item.type === MSG_ITEM_VOICE && item.voice_item?.text)
       return { kind: "text", text: item.voice_item.text };
     if (item.type === MSG_ITEM_IMAGE) {
-      log(`图片消息原始数据: ${JSON.stringify(item)}`);
+      log(`Image message raw data: ${JSON.stringify(item)}`);
       if (item.image_item) return { kind: "image", imageItem: item.image_item };
       return { kind: "text", text: "[用户发送了一张图片，但无法获取图片数据]" };
     }
     if (item.type === MSG_ITEM_FILE) {
-      log(`文件消息原始数据: ${JSON.stringify(item)}`);
+      log(`File message raw data: ${JSON.stringify(item)}`);
       const name = item.file_item?.file_name || "未知文件";
       if (item.file_item?.media?.encrypt_query_param && item.file_item?.media?.aes_key)
         return { kind: "file", fileItem: item.file_item, fileName: name };
@@ -200,7 +200,7 @@ function extractContent(msg: WeixinMessage): ExtractedContent {
       const url = item.link_item?.url || "";
       return { kind: "text", text: `[分享链接: ${title} ${url}]` };
     }
-    log(`未知消息类型 type=${item.type}，原始数据: ${JSON.stringify(item)}`);
+    log(`Unknown message type=${item.type}, raw data: ${JSON.stringify(item)}`);
   }
   return null;
 }
@@ -283,11 +283,11 @@ async function downloadAndDecryptCdn(
   try {
     const key = parseAesKey(aesKeyBase64);
     const res = await fetchWithTimeout(cdnUrl, {}, CDN_DOWNLOAD_TIMEOUT_MS);
-    if (!res.ok) { logError(`${label} CDN 下载失败: HTTP ${res.status}`); return null; }
+    if (!res.ok) { logError(`${label} CDN download failed: HTTP ${res.status}`); return null; }
     const encrypted = Buffer.from(await res.arrayBuffer());
     return decryptAesEcb(encrypted, key);
   } catch (err) {
-    logError(`${label} 下载/解密异常: ${String(err)}`);
+    logError(`${label} download/decrypt error: ${String(err)}`);
     return null;
   }
 }
@@ -308,14 +308,14 @@ function mimeToExt(mimeType: string): string {
 
 async function downloadWechatImage(imageItem: ImageItem): Promise<{ buf: Buffer; mimeType: string } | null> {
   if (!imageItem.media?.encrypt_query_param || !imageItem.media?.aes_key) return null;
-  const decrypted = await downloadAndDecryptCdn(imageItem.media.encrypt_query_param, imageItem.media.aes_key, "图片");
+  const decrypted = await downloadAndDecryptCdn(imageItem.media.encrypt_query_param, imageItem.media.aes_key, "Image");
   if (!decrypted) return null;
   return { buf: decrypted, mimeType: detectImageMimeType(decrypted) };
 }
 
 async function downloadWechatFile(fileItem: FileItem, fileName: string): Promise<string | null> {
   if (!fileItem.media?.encrypt_query_param || !fileItem.media?.aes_key) return null;
-  const decrypted = await downloadAndDecryptCdn(fileItem.media.encrypt_query_param, fileItem.media.aes_key, `文件(${fileName})`);
+  const decrypted = await downloadAndDecryptCdn(fileItem.media.encrypt_query_param, fileItem.media.aes_key, `File(${fileName})`);
   if (!decrypted) return null;
   const safeName = path.basename(fileName).replace(/[\x00-\x1f]/g, "_") || "unnamed";
   const filePath = path.join(MEDIA_DIR, `file_${Date.now()}_${safeName}`);
@@ -360,7 +360,7 @@ async function uploadBufferToCdn(params: {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (lastError.message.includes("4xx")) throw lastError;
       if (attempt < CDN_UPLOAD_MAX_RETRIES) {
-        log(`CDN 上传重试 ${attempt}/${CDN_UPLOAD_MAX_RETRIES}: ${lastError.message}`);
+        log(`CDN upload retry ${attempt}/${CDN_UPLOAD_MAX_RETRIES}: ${lastError.message}`);
         await new Promise((r) => setTimeout(r, CDN_UPLOAD_RETRY_DELAY_MS));
       }
     }
@@ -408,7 +408,7 @@ async function uploadAndSendMedia(
       base_info: { channel_version: CHANNEL_VERSION },
     }), token, timeoutMs: API_TIMEOUT_MS,
   });
-  log(`媒体发送成功: ${fileName}`);
+  log(`Media sent: ${fileName}`);
 }
 
 // ── WeChat API ───────────────────────────────────────────────────────────────
@@ -559,12 +559,12 @@ function stopTypingAndNotify(baseUrl: string, token: string, userId: string): vo
 // ── QR Login & Re-Login ──────────────────────────────────────────────────────
 
 async function doQRLogin(baseUrl: string = DEFAULT_BASE_URL): Promise<AccountData | null> {
-  log("正在获取微信登录二维码...");
+  log("Fetching WeChat login QR code...");
   const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const qrRes = await fetchWithTimeout(new URL(`ilink/bot/get_bot_qrcode?bot_type=${BOT_TYPE}`, base).toString(), {}, API_TIMEOUT_MS);
   if (!qrRes.ok) throw new Error(`QR fetch failed: ${qrRes.status}`);
   const qrResp = await qrRes.json() as { qrcode: string; qrcode_img_content: string };
-  log(`扫码链接: ${qrResp.qrcode_img_content}`);
+  log(`QR code link: ${qrResp.qrcode_img_content}`);
   try {
     const qrterm = await import("qrcode-terminal");
     await new Promise<void>((r) => { qrterm.default.generate(qrResp.qrcode_img_content, {}, (qr: string) => { process.stderr.write(qr + "\n"); r(); }); });
@@ -584,27 +584,27 @@ async function doQRLogin(baseUrl: string = DEFAULT_BASE_URL): Promise<AccountDat
           accountId: status.ilink_bot_id, userId: status.ilink_user_id, savedAt: new Date().toISOString(),
         };
         saveCredentials(account);
-        log(`微信连接成功: ${account.accountId}`);
+        log(`WeChat connected: ${account.accountId}`);
         return account;
       }
-      if (status.status === "expired") { log("二维码已过期"); return null; }
+      if (status.status === "expired") { log("QR code expired"); return null; }
     } catch (err) {
       if (!(err instanceof Error && err.name === "AbortError")) throw err;
     }
     await new Promise((r) => setTimeout(r, QR_POLL_DELAY_MS));
   }
-  log("登录超时");
+  log("Login timed out");
   return null;
 }
 
 async function doQRReLogin(oldAccount: AccountData): Promise<AccountData> {
-  log("Token 过期，开始重新登录...");
+  log("Token expired, starting re-login...");
   for (let attempt = 1; attempt <= QR_RELOGIN_MAX_ATTEMPTS; attempt++) {
-    log(`重新登录 (${attempt}/${QR_RELOGIN_MAX_ATTEMPTS})...`);
+    log(`Re-login attempt (${attempt}/${QR_RELOGIN_MAX_ATTEMPTS})...`);
     const account = await doQRLogin(oldAccount.baseUrl);
     if (account) return account;
   }
-  throw new Error(`重新登录失败: ${QR_RELOGIN_MAX_ATTEMPTS} 次尝试均未扫码`);
+  throw new Error(`Re-login failed: ${QR_RELOGIN_MAX_ATTEMPTS} attempts exhausted, QR code not scanned`);
 }
 
 // ── Session & Context Token Management ───────────────────────────────────────
@@ -621,8 +621,8 @@ function loadSessions(): void {
       const first = userSessions.keys().next().value;
       if (first !== undefined) userSessions.delete(first); else break;
     }
-    log(`恢复 ${userSessions.size} 个 SDK session`);
-  } catch (err) { if (fs.existsSync(SESSION_FILE)) logError(`加载 session 失败: ${String(err)}`); }
+    log(`Restored ${userSessions.size} SDK sessions`);
+  } catch (err) { if (fs.existsSync(SESSION_FILE)) logError(`Failed to load sessions: ${String(err)}`); }
 }
 
 function saveSessions(): void {
@@ -660,8 +660,8 @@ function loadContextTokens(): void {
       else if (v && typeof v === "object" && "token" in (v as any)) { contextTokens.set(k, v as ContextTokenEntry); }
     }
     pruneContextTokens();
-    log(`恢复 ${contextTokens.size} 个 context_token`);
-  } catch (err) { if (fs.existsSync(CONTEXT_TOKEN_FILE)) logError(`加载 context_token 失败: ${String(err)}`); }
+    log(`Restored ${contextTokens.size} context tokens`);
+  } catch (err) { if (fs.existsSync(CONTEXT_TOKEN_FILE)) logError(`Failed to load context tokens: ${String(err)}`); }
 }
 
 function persistContextTokens(): void {
@@ -889,7 +889,7 @@ async function handleSlashCommand(
       const errMsg = String(err).slice(0, 100);
       await sendTextMessage(account.baseUrl, account.token, senderId, `模型不可用: ${targetModel}\n${errMsg}\n\n保持当前模型: ${getUserModel(senderId)}`, contextToken);
     }
-    log(`切换模型: user=${senderId} model=${getUserModel(senderId)}`);
+    log(`Model switched: user=${senderId} model=${getUserModel(senderId)}`);
     return true;
   }
 
@@ -983,14 +983,14 @@ async function handleMessage(
   if (!queue) { queue = []; userQueues.set(senderId, queue); }
   queue.push({ content, contextToken });
 
-  // 如果正在处理中，提示用户消息已收到排队
+  // If already processing, notify user that the message is queued
   if (processingUsers.has(senderId)) {
     try {
       await sendTextMessage(account.baseUrl, account.token, senderId, "消息已收到，前一条正在处理中，请稍候。", contextToken);
     } catch {}
   }
 
-  processQueue(account, senderId).catch((err) => logError(`队列处理异常: ${String(err)}`));
+  processQueue(account, senderId).catch((err) => logError(`Queue processing error: ${String(err)}`));
 }
 
 async function processOneMessage(
@@ -1036,7 +1036,7 @@ async function processOneMessage(
     const abortController = new AbortController();
     userAbortControllers.set(senderId, abortController);
 
-    log(`调用 SDK: user=${senderId} session=${sessionId ?? "new"} prompt=${prompt.slice(0, 50)}...`);
+    log(`SDK query: user=${senderId} session=${sessionId ?? "new"} prompt=${prompt.slice(0, 50)}...`);
 
     for await (const message of query({
       prompt,
@@ -1104,15 +1104,15 @@ async function processOneMessage(
       if (i > 0) await new Promise((r) => setTimeout(r, SPLIT_DELAY_MS));
       await sendTextMessage(baseUrl, token, senderId, chunks[i], contextToken);
     }
-    log(`回复成功: user=${senderId} length=${result.length}`);
+    log(`Reply sent: user=${senderId} length=${result.length}`);
   } catch (err) {
     userAbortControllers.delete(senderId);
     stopTypingAndNotify(baseUrl, token, senderId);
     if (abortController.signal.aborted) {
-      log(`任务已中止: user=${senderId}`);
+      log(`Task aborted: user=${senderId}`);
       return;
     }
-    logError(`处理失败: user=${senderId} ${String(err)}`);
+    logError(`Processing failed: user=${senderId} ${String(err)}`);
     try { await sendTextMessage(baseUrl, token, senderId, `处理出错: ${String(err)}`, contextToken); } catch {}
   }
 }
@@ -1124,9 +1124,9 @@ async function startPolling(account: AccountData): Promise<never> {
   let getUpdatesBuf = "";
   let consecutiveFailures = 0;
   const syncBufFile = path.join(CREDENTIALS_DIR, "sync_buf.txt");
-  try { getUpdatesBuf = fs.readFileSync(syncBufFile, "utf-8"); log(`恢复同步状态`); } catch {}
+  try { getUpdatesBuf = fs.readFileSync(syncBufFile, "utf-8"); log(`Restored sync state`); } catch {}
 
-  log("开始监听微信消息 (SDK 模式)...");
+  log("Listening for WeChat messages (SDK mode)...");
 
   while (true) {
     try {
@@ -1135,7 +1135,7 @@ async function startPolling(account: AccountData): Promise<never> {
 
       if (isError) {
         if (resp.errcode === SESSION_EXPIRED_ERRCODE || resp.ret === SESSION_EXPIRED_ERRCODE) {
-          logError("Session 过期，触发重新登录...");
+          logError("Session expired, triggering re-login...");
           try {
             const newAccount = await doQRReLogin(account);
             account = newAccount;
@@ -1145,13 +1145,13 @@ async function startPolling(account: AccountData): Promise<never> {
             consecutiveFailures = 0;
             continue;
           } catch (err) {
-            logError(`重新登录失败: ${String(err)}`);
+            logError(`Re-login failed: ${String(err)}`);
             try { fs.unlinkSync(CREDENTIALS_FILE); } catch {}
             process.exit(1);
           }
         }
         consecutiveFailures++;
-        logError(`getUpdates 失败: ret=${resp.ret} errcode=${resp.errcode}`);
+        logError(`getUpdates failed: ret=${resp.ret} errcode=${resp.errcode}`);
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
           consecutiveFailures = 0;
           await new Promise((r) => setTimeout(r, BACKOFF_DELAY_MS));
@@ -1178,14 +1178,14 @@ async function startPolling(account: AccountData): Promise<never> {
 
         if (msg.context_token) cacheContextToken(replyTarget, msg.context_token);
         const ct = getCachedContextToken(replyTarget);
-        if (!ct) { log(`跳过消息（无 context_token）: ${senderId}`); continue; }
+        if (!ct) { log(`Skipping message (no context_token): ${senderId}`); continue; }
 
-        log(`收到消息: from=${senderId} kind=${content.kind}${content.kind === "text" ? ` text=${content.text.slice(0, 50)}` : ""}...`);
-        handleMessage(account, replyTarget, content, ct).catch((err) => logError(`handleMessage 异常: ${String(err)}`));
+        log(`Message received: from=${senderId} kind=${content.kind}${content.kind === "text" ? ` text=${content.text.slice(0, 50)}` : ""}...`);
+        handleMessage(account, replyTarget, content, ct).catch((err) => logError(`handleMessage error: ${String(err)}`));
       }
     } catch (err) {
       consecutiveFailures++;
-      logError(`轮询异常: ${String(err)}`);
+      logError(`Polling error: ${String(err)}`);
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         consecutiveFailures = 0;
         await new Promise((r) => setTimeout(r, BACKOFF_DELAY_MS));
@@ -1218,16 +1218,16 @@ async function main() {
   let account = loadCredentials();
   if (!account) {
     account = await doQRLogin();
-    if (!account) { logError("登录失败，退出"); process.exit(1); }
+    if (!account) { logError("Login failed, exiting"); process.exit(1); }
   } else {
-    log(`使用已保存账号: ${account.accountId}`);
+    log(`Using saved account: ${account.accountId}`);
   }
 
   await startPolling(account);
 }
 
 function shutdown(): void {
-  log("正在退出...");
+  log("Shutting down...");
   if (cleanupInterval) clearInterval(cleanupInterval);
   if (ctPersistTimer) { clearTimeout(ctPersistTimer); ctPersistTimer = null; }
   saveSessions();

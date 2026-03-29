@@ -77,8 +77,8 @@ async function main() {
   if (fs.existsSync(CREDENTIALS_FILE) && !forceRelogin) {
     try {
       const existing = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, "utf-8"));
-      console.log(`已有保存的账号: ${existing.accountId}`);
-      console.log(`保存时间: ${existing.savedAt}`);
+      console.log(`Existing account found: ${existing.accountId}`);
+      console.log(`Saved at: ${existing.savedAt}`);
       console.log();
       const readline = await import("node:readline");
       const rl = readline.createInterface({
@@ -86,11 +86,11 @@ async function main() {
         output: process.stdout,
       });
       const answer = await new Promise<string>((resolve) => {
-        rl.question("是否重新登录？(y/N) ", resolve);
+        rl.question("Re-login? (y/N) ", resolve);
       });
       rl.close();
       if (answer.toLowerCase() !== "y") {
-        console.log("保持现有凭据，退出。");
+        console.log("Keeping existing credentials. Exiting.");
         process.exit(0);
       }
     } catch {
@@ -98,11 +98,11 @@ async function main() {
     }
   }
 
-  console.log("正在获取微信登录二维码...\n");
+  console.log("Fetching WeChat login QR code...\n");
   const qrResp = await fetchQRCode(DEFAULT_BASE_URL);
 
   // Always print the URL first (terminal QR may be garbled in some environments)
-  console.log(`扫码链接: ${qrResp.qrcode_img_content}\n`);
+  console.log(`QR code URL: ${qrResp.qrcode_img_content}\n`);
 
   // Display QR code in terminal (best-effort)
   try {
@@ -121,7 +121,7 @@ async function main() {
     // QR rendering failed, URL already printed above
   }
 
-  console.log("请用微信扫描上方二维码...\n");
+  console.log("Scan the QR code above with WeChat...\n");
 
   const deadline = Date.now() + 480_000;
   let scannedPrinted = false;
@@ -135,17 +135,17 @@ async function main() {
         break;
       case "scaned":
         if (!scannedPrinted) {
-          console.log("\n👀 已扫码，请在微信中确认...");
+          console.log("\nScanned! Please confirm in WeChat...");
           scannedPrinted = true;
         }
         break;
       case "expired":
-        console.log("\n二维码已过期，请重新运行 setup。");
+        console.log("\nQR code expired. Please run setup again.");
         process.exit(1);
         break;
       case "confirmed": {
         if (!status.ilink_bot_id || !status.bot_token) {
-          console.error("\n登录失败：服务器未返回完整信息。");
+          console.error("\nLogin failed: server returned incomplete data.");
           process.exit(1);
         }
 
@@ -169,12 +169,12 @@ async function main() {
           // best-effort
         }
 
-        console.log(`\n✅ 微信连接成功！`);
-        console.log(`   账号 ID: ${account.accountId}`);
-        console.log(`   用户 ID: ${account.userId}`);
-        console.log(`   凭据保存至: ${CREDENTIALS_FILE}`);
+        console.log(`\nWeChat connected!`);
+        console.log(`   Account ID: ${account.accountId}`);
+        console.log(`   User ID: ${account.userId}`);
+        console.log(`   Credentials saved to: ${CREDENTIALS_FILE}`);
         console.log();
-        console.log("现在可以启动 Claude Code 通道：");
+        console.log("You can now start the Claude Code channel:");
         console.log(
           "  claude --dangerously-load-development-channels server:wechat",
         );
@@ -184,11 +184,11 @@ async function main() {
     await new Promise((r) => setTimeout(r, 1000));
   }
 
-  console.log("\n登录超时，请重新运行。");
+  console.log("\nLogin timed out. Please run again.");
   process.exit(1);
 }
 
 main().catch((err) => {
-  console.error(`错误: ${err}`);
+  console.error(`Error: ${err}`);
   process.exit(1);
 });

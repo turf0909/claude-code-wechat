@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Claude Code WeChat Channel — CLI entry point
+ * Claude Code WeChat — CLI entry point
  *
  * Usage:
- *   npx claude-code-wechat-channel setup   — WeChat QR login
- *   npx claude-code-wechat-channel start   — Start channel server (used by .mcp.json)
- *   npx claude-code-wechat-channel install — Write .mcp.json to current directory
+ *   npx claude-code-wechat setup   — WeChat QR login
+ *   npx claude-code-wechat start   — Start channel server (used by .mcp.json)
+ *   npx claude-code-wechat install — Write .mcp.json to current directory
  */
 
 import { execSync, spawnSync } from "node:child_process";
@@ -36,7 +36,6 @@ function runScript(script, args = []) {
     process.exit(1);
   }
 
-  // Prefer bun for performance, fall back to node
   const bun = getBunPath();
   const runtime = bun || getNodePath();
   const result = spawnSync(runtime, [scriptPath, ...args], {
@@ -51,7 +50,7 @@ function install() {
     mcpServers: {
       wechat: {
         command: "npx",
-        args: ["-y", "claude-code-wechat-channel", "start"],
+        args: ["-y", "claude-code-wechat", "start"],
       },
     },
   };
@@ -76,16 +75,16 @@ function install() {
 
   console.log(`
 Next steps:
-  1. Run: npx claude-code-wechat-channel setup
+  1. Run: npx claude-code-wechat setup
   2. Then: claude --dangerously-load-development-channels server:wechat
 `);
 }
 
 function help() {
   console.log(`
-  Claude Code WeChat Channel
+  Claude Code WeChat
 
-  Usage: npx claude-code-wechat-channel <command>
+  Usage: npx claude-code-wechat <command>
 
   Commands:
     setup     WeChat QR login (scan to authenticate)
@@ -102,7 +101,7 @@ switch (command) {
     runScript("setup.js");
     break;
   case "start":
-    runScript("wechat-channel.js");
+    runScript("channel-mode.js");
     break;
   case "install":
     install();

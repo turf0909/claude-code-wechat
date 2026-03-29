@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const files = [
-  path.join(__dirname, "..", "dist", "wechat-channel.js"),
+  path.join(__dirname, "..", "dist", "channel-mode.js"),
   path.join(__dirname, "..", "dist", "setup.js"),
   path.join(__dirname, "..", "dist", "sdk-mode.js"),
 ];

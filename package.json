@@ -14,7 +14,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build wechat-channel.ts --target node --outfile dist/wechat-channel.js && bun build setup.ts --target node --outfile dist/setup.js && bun build sdk-mode/main.ts --target node --outfile dist/sdk-mode.js && node scripts/strip-bun-marker.cjs",
+    "build": "bun build channel-mode/main.ts --target node --outfile dist/channel-mode.js && bun build setup.ts --target node --outfile dist/setup.js && bun build sdk-mode/main.ts --target node --outfile dist/sdk-mode.js && node scripts/strip-bun-marker.cjs",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
