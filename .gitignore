@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+.claude/
+.cursor/
+.mcp.json
+.env
+.env.*
+bun.lock
+dist/
+docs/
