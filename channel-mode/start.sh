@@ -66,15 +66,16 @@ fi
 
 WECHAT_SERVER="{\"command\":\"node\",\"args\":[\"$DIST_PATH\"]}"
 
-python3 -c "
-import json, os
-mcp_path = os.path.join('$WORK_DIR', '.mcp.json')
-cfg = {}
-if os.path.exists(mcp_path):
-    with open(mcp_path) as f: cfg = json.load(f)
-cfg.setdefault('mcpServers', {})['wechat'] = json.loads('$WECHAT_SERVER')
-with open(mcp_path, 'w') as f: json.dump(cfg, f, indent=2); f.write('\n')
-" 2>/dev/null
+node -e "
+const fs = require('fs');
+const path = require('path');
+const mcpPath = path.join(process.argv[1], '.mcp.json');
+let cfg = {};
+try { cfg = JSON.parse(fs.readFileSync(mcpPath, 'utf-8')); } catch {}
+if (!cfg.mcpServers) cfg.mcpServers = {};
+cfg.mcpServers.wechat = JSON.parse(process.argv[2]);
+fs.writeFileSync(mcpPath, JSON.stringify(cfg, null, 2) + '\n');
+" "$WORK_DIR" "$WECHAT_SERVER"
 
 cd "$WORK_DIR"
 exec claude --dangerously-load-development-channels server:wechat --dangerously-skip-permissions
