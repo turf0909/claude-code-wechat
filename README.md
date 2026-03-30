@@ -1,53 +1,64 @@
 # Claude Code WeChat
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-%3E%3D2.1.80-blue.svg)](https://claude.com/claude-code)
+
+**[English](README.md) | [中文](README.zh-CN.md)**
+
 Connect WeChat to Claude Code — chat with Claude Code directly from WeChat.
 
-Based on the official WeChat ClawBot ilink API, this project bridges WeChat messages into Claude Code sessions, letting you interact with Claude Code from your phone.
+Based on the official WeChat [ClawBot](https://github.com/nicepkg/openclaw) ilink API, this project bridges WeChat messages into Claude Code sessions, letting you interact with Claude Code from your phone.
+
+[Why](#why) · [Quick Start](#quick-start) · [Slash Commands](#slash-commands-sdk-mode-only) · [Mode Comparison](#mode-comparison)
+
+<p align="center">
+  <img src="docs/demo.png" alt="WeChat Demo" width="300" />
+</p>
+
+## Why
+
+- **Code from anywhere** — Review PRs, debug issues, and edit code via WeChat on your phone, without opening a laptop
+- **Multi-user ready** — Each WeChat user gets an independent Claude Code session with full conversation history
+- **Two modes, zero lock-in** — Channel mode for Claude Code CLI users, SDK mode for API Key users. Pick what fits your setup
 
 ## How It Works
 
 ```
 WeChat user sends a message
-    |
-WeChat ClawBot -> ilink API (long polling)
-    |
+    ↓
+WeChat ClawBot → ilink API (long polling)
+    ↓
 Channel mode MCP server (local stdio)
-    | notifications/claude/channel
+    ↓ notifications/claude/channel
 Claude Code receives message, generates response
-    |
+    ↓
 wechat_thinking / wechat_reply / wechat_send_file tools
-    |
-ilink/bot/sendmessage -> WeChat user receives reply
+    ↓
+ilink/bot/sendmessage → WeChat user receives reply
 ```
 
 ## Features
 
-- **Text messaging** — Messages auto-forwarded between WeChat and Claude Code
-- **Image support** — Receive and send images (CDN download/upload with AES-128-ECB encryption)
-- **File support** — Receive and send arbitrary files
-- **Voice messages** — Automatic speech-to-text via WeChat
-- **Link sharing** — Parse shared links from users
-- **Group chat** — Auto-detect group messages, reply to correct group
-- **Typing indicator** — Show "typing..." in WeChat while processing
-- **Long message splitting** — Auto-split messages over 2000 chars
-- **Token expiry auto-relogin** — QR code re-scan on session expiry (up to 3 times)
-- **Credential persistence** — Context tokens and login saved to disk, auto-restore on restart
-- **Processing status** — Send "processing..." message for complex requests
-- **CDN upload retry** — Auto-retry up to 3 times (4xx fails immediately, 5xx/network retries)
-- **Graceful shutdown** — Ctrl-C saves state and cleans up typing indicators
-- **Media management** — Downloaded files saved to `media/`, auto-cleanup after 7 days
+| Category | Features |
+|----------|----------|
+| 💬 Messaging | Text send/receive, long message auto-split (2000 chars), processing status |
+| 🖼 Media | Image send/receive (CDN + AES-128-ECB), file send/receive, voice-to-text |
+| 👥 Social | Group chat support, link sharing, typing indicator |
+| 🔄 Reliability | Token expiry auto-relogin (up to 3 retries), CDN upload retry, credential persistence |
+| 🧹 Maintenance | Graceful shutdown, media auto-cleanup (7 days), log rotation (10MB) |
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org) >= 18
 - [Bun](https://bun.sh) >= 1.0 (for building; startup script auto-installs if missing)
-- Python 3 (Channel mode uses it to update `.mcp.json`; not needed for SDK mode)
-- WeChat ClawBot (supports iOS and Android)
+- Python 3 (Channel mode only, for `.mcp.json` updates)
+- WeChat ClawBot (iOS and Android)
 
-**Channel mode requires:**
+**Channel mode** additionally requires:
 - [Claude Code](https://claude.com/claude-code) >= 2.1.80 (must run `claude login` first)
 
-**SDK mode requires:**
+**SDK mode** additionally requires:
 - `ANTHROPIC_API_KEY` (from [Anthropic Console](https://console.anthropic.com/) or your API proxy)
 
 ## Quick Start
@@ -151,6 +162,18 @@ Use `WECHAT_CREDENTIALS_FILE` env var for custom credential paths (multi-user se
 | `wechat_reply` | Send text reply to WeChat user (auto-splits long messages) |
 | `wechat_send_file` | Send image or file to WeChat user via CDN |
 
+## Mode Comparison
+
+| | Channel Mode | SDK Mode (recommended) |
+|---|---|---|
+| Start command | `./channel-mode/start.sh` | `./sdk-mode/start.sh` |
+| Authentication | `claude login` + optional API Key | **API Key only** |
+| Claude Code CLI | Required | **Not required** |
+| Multi-user sessions | No (shared session) | **Yes** |
+| Slash commands | No | **Yes** |
+| Message queue | No | **Yes** |
+| Response latency | Low (persistent connection) | ~3s (API round-trip) |
+
 ## Background Running (tmux)
 
 ```bash
@@ -162,25 +185,6 @@ tmux attach -t wechat
 # Kill session
 tmux kill-session -t wechat
 ```
-
-## SDK Mode Features
-
-- **Multi-user independent sessions** — Each WeChat user has their own conversation
-- **Message queue** — Multiple messages processed in order, no drops
-- **Session recovery** — Auto-restore on restart, `/resume` to switch history
-- **Model switching** — Dynamic model switch via `/model`
-- **No OAuth required** — Only needs `ANTHROPIC_API_KEY`
-
-## Mode Comparison
-
-| | Channel Mode (`channel-mode/start.sh`) | SDK Mode (`sdk-mode/start.sh`) |
-|---|---|---|
-| Authentication | `claude login` + optional API Key | **API Key only** |
-| Claude Code CLI | Required | **Not required** |
-| Multi-user sessions | No (shared session) | **Yes** |
-| Slash commands | No | **Yes** |
-| Message queue | No | **Yes** |
-| Response latency | Low (persistent connection) | ~3s (API round-trip) |
 
 ## File Structure
 
@@ -198,6 +202,7 @@ tmux kill-session -t wechat
 │   └── reset-all.sh          # Full reset (login + build + deps)
 ├── setup.ts             # WeChat QR login tool (shared)
 ├── cli.mjs              # CLI entry point (for npx)
+├── docs/                # Screenshots and images
 ├── dist/                # Build output
 ├── .env.example         # Environment config template
 ├── .gitignore
@@ -235,6 +240,16 @@ All data saved under `~/.claude/channels/wechat/`:
 # Full reset (back to post-clone state)
 ./scripts/reset-all.sh
 ```
+
+## Contributing
+
+Contributions are welcome! Feel free to open issues and pull requests.
+
+## Acknowledgments
+
+- [ClawBot](https://github.com/nicepkg/openclaw) — WeChat bot platform providing the ilink API
+- [Claude Code](https://claude.com/claude-code) — Anthropic's CLI for Claude, powering the AI backend
+- [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) — SDK for programmatic Claude Code access
 
 ## License
 
