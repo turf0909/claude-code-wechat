@@ -52,50 +52,52 @@ ilink/bot/sendmessage -> WeChat user receives reply
 
 ## Quick Start
 
-### 1. Start
-
 ```bash
 git clone https://github.com/turf0909/claude-code-wechat.git
 cd claude-code-wechat
-./start.sh
+cp .env.example .env
+# Edit .env if needed (see Authentication below)
+```
+
+Two modes are available — pick the one that fits your setup:
+
+### SDK Mode (recommended)
+
+Uses the Claude Agent SDK directly. Multi-user, slash commands, message queue. Requires an API Key.
+
+```bash
+# Edit .env: ANTHROPIC_API_KEY=sk-ant-xxx
+./sdk-mode/start.sh
 
 # Or specify a working directory for Claude to operate on
-./start.sh ~/my-project
+./sdk-mode/start.sh ~/my-project
 ```
+
+### Channel Mode
+
+Uses Claude Code CLI as the backend. Supports OAuth (no API Key needed).
+
+```bash
+# Make sure you have Claude Code CLI installed and logged in: claude login
+./channel-mode/start.sh
+
+# Or with a working directory
+./channel-mode/start.sh ~/my-project
+```
+
+### Authentication
+
+The startup scripts auto-detect authentication from `.env` (in project root):
+1. `ANTHROPIC_API_KEY` set → use API Key (with optional `ANTHROPIC_BASE_URL` proxy)
+2. Nothing set → use Claude Code native OAuth (Channel mode only; run `claude login` first)
+
+> `.env` is gitignored and won't be committed. See `.env.example` for all options.
 
 > **Working directory**: Without arguments, Claude works in the bot's own directory. With a path, Claude can read/write files and run commands in that directory — useful for having WeChat Claude help you with another project's code.
 
-The startup script auto-detects authentication:
-1. `ANTHROPIC_API_KEY` set in `.env` or environment → use API Key (with optional `ANTHROPIC_BASE_URL` proxy)
-2. Nothing set → use Claude Code native OAuth (Channel mode only; run `claude login` first)
+### Chat on WeChat
 
-> `.env` file goes in the project root directory (alongside `.env.example`). Copy `.env.example` to `.env` and edit. The file is gitignored and won't be committed.
-
-Other auto-completed tasks:
-- Install bun if missing
-- Build `dist/` if missing (`bun install` + `npm run build`)
-- Write `.mcp.json` config to working directory
-- Launch Claude Code with WeChat Channel
-- Trigger WeChat QR login on first run
-
-### 2. Chat on WeChat
-
-Open WeChat, find the ClawBot conversation, and send a message. It appears in the Claude Code terminal, and Claude's reply is sent back to WeChat automatically.
-
-### SDK Mode
-
-SDK mode uses the Claude Agent SDK directly, without requiring Claude Code CLI or OAuth:
-
-```bash
-# Set API key in .env first
-cp .env.example .env
-# Edit .env: ANTHROPIC_API_KEY=sk-ant-xxx
-
-./sdk-mode/start.sh
-
-# Or with a working directory
-./sdk-mode/start.sh ~/my-project
-```
+Open WeChat, find the ClawBot conversation, and send a message. Claude's reply is sent back to WeChat automatically.
 
 ### Using an API Proxy
 
@@ -114,7 +116,7 @@ ANTHROPIC_BASE_URL=https://your-proxy.example.com
 bun install
 npm run build
 
-# Run QR login separately (before start.sh)
+# Run QR login separately
 node dist/setup.js
 node dist/setup.js --force   # Skip "re-login?" confirmation
 ```
@@ -150,7 +152,7 @@ Use `WECHAT_CREDENTIALS_FILE` env var for custom credential paths (multi-user se
 ## Background Running (tmux)
 
 ```bash
-tmux new-session -d -s wechat './start.sh ~/my-project'
+tmux new-session -d -s wechat './sdk-mode/start.sh ~/my-project'
 
 # Attach to view output
 tmux attach -t wechat
@@ -194,7 +196,6 @@ tmux kill-session -t wechat
 │   └── reset-all.sh          # Full reset (login + build + deps)
 ├── setup.ts             # WeChat QR login tool (shared)
 ├── cli.mjs              # CLI entry point (for npx)
-├── start.sh             # Root wrapper (delegates to channel-mode)
 ├── dist/                # Build output
 ├── .env.example         # Environment config template
 ├── .gitignore

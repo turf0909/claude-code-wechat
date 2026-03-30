@@ -1289,7 +1289,7 @@ async function startPolling(account: AccountData): Promise<never> {
             continue;
           } catch (err) {
             logError(`Re-login failed: ${String(err)}`);
-            // Remove invalid credentials so next start.sh run triggers setup.js QR login
+            // Remove invalid credentials so next startup triggers setup.js QR login
             try { fs.unlinkSync(CREDENTIALS_FILE); log("Removed invalid credentials"); } catch {}
             process.exit(1);
           }

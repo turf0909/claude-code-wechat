@@ -12,4 +12,4 @@ rm -rf "$PROJECT_DIR/node_modules" "$PROJECT_DIR/dist" "$PROJECT_DIR/bun.lock"
 echo "Cleared: node_modules/ dist/ bun.lock"
 
 echo ""
-echo "Reset complete. Run ./start.sh to start (will auto-install deps and build)."
+echo "Reset complete. Run ./sdk-mode/start.sh or ./channel-mode/start.sh to start (will auto-install deps and build)."
