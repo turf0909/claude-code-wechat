@@ -5,11 +5,12 @@ const files = [
   path.join(__dirname, "..", "dist", "channel-mode.js"),
   path.join(__dirname, "..", "dist", "setup.js"),
   path.join(__dirname, "..", "dist", "sdk-mode.js"),
+  path.join(__dirname, "..", "dist", "wechat-tools.js"),
 ];
 
 for (const f of files) {
   const content = fs.readFileSync(f, "utf8");
-  const stripped = content.replace(/^\/\/ @bun\r?\n/m, "");
+  const stripped = content.replace(/^#!.*bun\r?\n/m, "").replace(/^\/\/ @bun\r?\n/m, "");
   if (content !== stripped) {
     fs.writeFileSync(f, stripped);
     console.log(`Stripped // @bun from ${path.basename(f)}`);

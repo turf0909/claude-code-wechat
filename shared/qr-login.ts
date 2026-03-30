@@ -14,7 +14,8 @@ export async function fetchQRCode(baseUrl: string): Promise<QRCodeResponse> {
   );
   const res = await fetchWithTimeout(url.toString(), {}, API_TIMEOUT_MS);
   if (!res.ok) throw new Error(`QR fetch failed: ${res.status}`);
-  return (await res.json()) as QRCodeResponse;
+  const text = await res.text();
+  try { return JSON.parse(text) as QRCodeResponse; } catch { throw new Error(`QR fetch: invalid JSON response: ${text.slice(0, 200)}`); }
 }
 
 export async function pollQRStatus(baseUrl: string, qrcode: string): Promise<QRStatusResponse> {
@@ -29,7 +30,8 @@ export async function pollQRStatus(baseUrl: string, qrcode: string): Promise<QRS
       LONG_POLL_TIMEOUT_MS,
     );
     if (!res.ok) throw new Error(`QR status failed: ${res.status}`);
-    return (await res.json()) as QRStatusResponse;
+    const text = await res.text();
+    try { return JSON.parse(text) as QRStatusResponse; } catch { throw new Error(`QR status: invalid JSON: ${text.slice(0, 200)}`); }
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") return { status: "wait" };
     throw err;

@@ -42,9 +42,11 @@ import { cleanupOldMedia } from "../shared/media.ts";
 const DEFAULT_SDK_MODEL = process.env.ANTHROPIC_MODEL || "auto";
 const SLASH_CMD_TIMEOUT_MS = 30_000;
 const SESSION_FILE = path.join(CREDENTIALS_DIR, "sdk_sessions.json");
-const TOOLS_SCRIPT_PATH = path.join(path.dirname(new URL(import.meta.url).pathname), "wechat-tools.ts");
+const TOOLS_SCRIPT_PATH = path.join(path.dirname(new URL(import.meta.url).pathname), "wechat-tools.js");
 
 // ── User Model Selection ────────────────────────────────────────────────────
+
+let activeAccount: AccountData;
 
 const userModels = new Map<string, string>();
 
@@ -128,7 +130,7 @@ function listAllSessions(): SessionInfo[] {
 // ── Slash Commands ──────────────────────────────────────────────────────────
 
 async function handleSlashCommand(
-  account: AccountData, senderId: string, replyTarget: string, cmd: string, contextToken: string,
+  senderId: string, replyTarget: string, cmd: string, contextToken: string,
 ): Promise<boolean> {
   const trimmed = cmd.trim();
   const lower = trimmed.toLowerCase();
@@ -139,14 +141,14 @@ async function handleSlashCommand(
     userQueues.delete(senderId);
     userSessions.delete(senderId);
     saveSessions();
-    await sendTextMessage(account.baseUrl, account.token, replyTarget, "已开始新对话。旧对话可通过 /resume 恢复。", contextToken);
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "已开始新对话。旧对话可通过 /resume 恢复。", contextToken);
     return true;
   }
 
   if (lower === "/clear") {
     const sessionId = userSessions.get(senderId);
     if (!sessionId) {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "当前没有活跃的对话，无需清除。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "当前没有活跃的对话，无需清除。", contextToken);
       return true;
     }
     try {
@@ -155,9 +157,9 @@ async function handleSlashCommand(
       try {
         for await (const m of query({ prompt: "/clear", options: { model: getUserModel(senderId), resume: sessionId, permissionMode: "bypassPermissions", maxTurns: 1, thinking: getThinkingConfig(senderId), abortController: ac } })) {}
       } finally { clearTimeout(timer); }
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "已清除对话上下文。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "已清除对话上下文。", contextToken);
     } catch {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "清除上下文失败，请重试。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "清除上下文失败，请重试。", contextToken);
     }
     return true;
   }
@@ -169,9 +171,9 @@ async function handleSlashCommand(
       userAbortControllers.delete(senderId);
       const queued = userQueues.get(senderId)?.length || 0;
       const msg = queued ? `已中止当前任务。还有 ${queued} 条排队消息待处理。` : "已中止当前任务。";
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, msg, contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, msg, contextToken);
     } else {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "当前没有正在执行的任务。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "当前没有正在执行的任务。", contextToken);
     }
     return true;
   }
@@ -180,23 +182,23 @@ async function handleSlashCommand(
     const controller = userAbortControllers.get(senderId);
     const queued = userQueues.get(senderId)?.length || 0;
     if (!controller && !queued) {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "当前没有正在执行或排队的任务。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "当前没有正在执行或排队的任务。", contextToken);
       return true;
     }
     if (controller) { controller.abort(); userAbortControllers.delete(senderId); }
     userQueues.delete(senderId);
     const parts = [controller ? "已中止当前任务" : null, queued ? `已清空 ${queued} 条排队消息` : null].filter(Boolean);
-    await sendTextMessage(account.baseUrl, account.token, replyTarget, `${parts.join("，")}。`, contextToken);
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `${parts.join("，")}。`, contextToken);
     return true;
   }
 
   if (lower === "/compact") {
     const sessionId = userSessions.get(senderId);
     if (!sessionId) {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "当前没有活跃的对话。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "当前没有活跃的对话。", contextToken);
       return true;
     }
-    await sendTextMessage(account.baseUrl, account.token, replyTarget, "正在压缩对话上下文...", contextToken);
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "正在压缩对话上下文...", contextToken);
     try {
       let result = "";
       const ac = new AbortController();
@@ -206,9 +208,9 @@ async function handleSlashCommand(
           if ((m as any).type === "result") result = (m as any).result || "";
         }
       } finally { clearTimeout(timer); }
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, result || "对话已压缩。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, result || "对话已压缩。", contextToken);
     } catch (err) {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, `压缩失败: ${String(err)}`, contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `压缩失败: ${String(err)}`, contextToken);
     }
     return true;
   }
@@ -218,21 +220,21 @@ async function handleSlashCommand(
     if (!arg) {
       const sessions = listAllSessions();
       const currentId = userSessions.get(senderId);
-      if (!sessions.length) { await sendTextMessage(account.baseUrl, account.token, replyTarget, "没有历史对话记录。", contextToken); return true; }
+      if (!sessions.length) { await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "没有历史对话记录。", contextToken); return true; }
       const lines = sessions.slice(0, 10).map((s, i) => {
         const date = s.timestamp.slice(0, 16).replace("T", " ");
         const title = s.firstMessage || s.slug || "(无标题)";
         const current = s.id === currentId ? " [当前]" : "";
         return `${i + 1}. ${date}\n   ${title}${current}\n   /resume ${s.id.slice(0, 8)}`;
       });
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, `历史对话 (最近 ${Math.min(sessions.length, 10)} 个):\n\n${lines.join("\n\n")}`, contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `历史对话 (最近 ${Math.min(sessions.length, 10)} 个):\n\n${lines.join("\n\n")}`, contextToken);
       return true;
     }
     const match = listAllSessions().find((s) => s.id.startsWith(arg));
-    if (!match) { await sendTextMessage(account.baseUrl, account.token, replyTarget, `未找到: ${arg}`, contextToken); return true; }
+    if (!match) { await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `未找到: ${arg}`, contextToken); return true; }
     userSessions.set(senderId, match.id);
     saveSessions();
-    await sendTextMessage(account.baseUrl, account.token, replyTarget, `已恢复对话: ${match.firstMessage || match.slug || "(无标题)"}\n\n继续发消息即可。`, contextToken);
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `已恢复对话: ${match.firstMessage || match.slug || "(无标题)"}\n\n继续发消息即可。`, contextToken);
     return true;
   }
 
@@ -240,12 +242,12 @@ async function handleSlashCommand(
     const arg = trimmed.slice(6).trim();
     if (!arg) {
       const current = getUserModel(senderId);
-      await sendTextMessage(account.baseUrl, account.token, replyTarget,
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget,
         `当前模型: ${current}\n\n用法: /model <模型名>\n例如: /model auto\n      /model glm-5\n\n输入 /model default 恢复默认`, contextToken);
       return true;
     }
     const targetModel = arg === "default" ? DEFAULT_SDK_MODEL : arg;
-    await sendTextMessage(account.baseUrl, account.token, replyTarget, `正在验证模型 ${targetModel}...`, contextToken);
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `正在验证模型 ${targetModel}...`, contextToken);
     try {
       let verified = false;
       let modelUsed = "";
@@ -272,19 +274,19 @@ async function handleSlashCommand(
       ]);
 
       if (verifyResult === "timeout") {
-        await sendTextMessage(account.baseUrl, account.token, replyTarget,
+        await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget,
           `模型验证超时（${MODEL_VERIFY_TIMEOUT_MS / 1000}s）: ${targetModel} 可能不可用\n\n保持当前模型: ${getUserModel(senderId)}`, contextToken);
       } else if (verified) {
         if (arg === "default") { userModels.delete(senderId); } else { userModels.set(senderId, arg); }
         const info = modelUsed && modelUsed !== targetModel ? `${targetModel} (实际: ${modelUsed})` : targetModel;
-        await sendTextMessage(account.baseUrl, account.token, replyTarget, `模型已切换为: ${info}\n\n如遇到兼容问题，发 /new 开始新对话后重试。`, contextToken);
+        await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `模型已切换为: ${info}\n\n如遇到兼容问题，发 /new 开始新对话后重试。`, contextToken);
       } else {
         const detail = resultMsg ? `\n${resultMsg.slice(0, 150)}` : "";
-        await sendTextMessage(account.baseUrl, account.token, replyTarget, `模型验证失败: ${targetModel} 不可用${detail}\n\n保持当前模型: ${getUserModel(senderId)}`, contextToken);
+        await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `模型验证失败: ${targetModel} 不可用${detail}\n\n保持当前模型: ${getUserModel(senderId)}`, contextToken);
       }
     } catch (err) {
       const errMsg = String(err).slice(0, 100);
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, `模型不可用: ${targetModel}\n${errMsg}\n\n保持当前模型: ${getUserModel(senderId)}`, contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `模型不可用: ${targetModel}\n${errMsg}\n\n保持当前模型: ${getUserModel(senderId)}`, contextToken);
     }
     log(`Model switched: user=${senderId} model=${getUserModel(senderId)}`);
     return true;
@@ -294,18 +296,18 @@ async function handleSlashCommand(
     const arg = trimmed.slice(9).trim().toLowerCase();
     if (!arg) {
       const status = userThinking.get(senderId) ? "开启" : "关闭";
-      await sendTextMessage(account.baseUrl, account.token, replyTarget,
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget,
         `Thinking 模式: ${status}\n\n用法: /thinking on | off\n注意: 部分模型不支持 thinking，开启后若报错请发 /thinking off 关闭`, contextToken);
       return true;
     }
     if (arg === "on") {
       userThinking.set(senderId, true);
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "已开启 Thinking 模式。如模型不支持导致报错，发 /thinking off 关闭。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "已开启 Thinking 模式。如模型不支持导致报错，发 /thinking off 关闭。", contextToken);
     } else if (arg === "off") {
       userThinking.delete(senderId);
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "已关闭 Thinking 模式。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "已关闭 Thinking 模式。", contextToken);
     } else {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "用法: /thinking on | off", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "用法: /thinking on | off", contextToken);
     }
     return true;
   }
@@ -325,18 +327,18 @@ async function handleSlashCommand(
       `任务: ${processing ? "处理中" : "空闲"}${queued ? ` (${queued} 条排队)` : ""}`,
       `版本: ${CHANNEL_VERSION}`,
     ];
-    await sendTextMessage(account.baseUrl, account.token, replyTarget, lines.join("\n"), contextToken);
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, lines.join("\n"), contextToken);
     return true;
   }
 
   if (lower === "/help") {
-    await sendTextMessage(account.baseUrl, account.token, replyTarget,
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget,
       "可用命令:\n/new - 开始新对话（旧对话保留，可 /resume）\n/clear - 清除当前对话上下文（保留 session）\n/stop - 中止当前任务\n/cancel - 中止当前任务并清空排队消息\n/model - 查看/切换模型\n/thinking - 查看/切换 Thinking 模式（默认关闭）\n/status - 查看当前状态\n/resume - 查看历史对话列表\n/resume <id> - 恢复指定对话\n/compact - 压缩当前对话上下文\n/help - 显示此帮助", contextToken);
     return true;
   }
 
   if (/^\/\w+$/.test(trimmed)) {
-    await sendTextMessage(account.baseUrl, account.token, replyTarget, `未知命令: ${trimmed}\n输入 /help 查看可用命令`, contextToken);
+    await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, `未知命令: ${trimmed}\n输入 /help 查看可用命令`, contextToken);
     return true;
   }
 
@@ -350,7 +352,7 @@ const userQueues = new Map<string, QueuedMessage[]>();
 const processingUsers = new Set<string>();
 const userAbortControllers = new Map<string, AbortController>();
 
-async function processQueue(account: AccountData, senderId: string): Promise<void> {
+async function processQueue(senderId: string): Promise<void> {
   if (processingUsers.has(senderId)) return;
   processingUsers.add(senderId);
   try {
@@ -358,7 +360,7 @@ async function processQueue(account: AccountData, senderId: string): Promise<voi
       const queue = userQueues.get(senderId);
       if (!queue?.length) break;
       const msg = queue.shift()!;
-      await processOneMessage(account, senderId, msg.replyTarget, msg.content, msg.contextToken);
+      await processOneMessage(senderId, msg.replyTarget, msg.content, msg.contextToken);
     }
   } finally {
     processingUsers.delete(senderId);
@@ -369,10 +371,10 @@ async function processQueue(account: AccountData, senderId: string): Promise<voi
 // ── Message Handler (SDK query) ─────────────────────────────────────────────
 
 async function handleMessage(
-  account: AccountData, senderId: string, replyTarget: string, content: ExtractedContent, contextToken: string,
+  senderId: string, replyTarget: string, content: ExtractedContent, contextToken: string,
 ): Promise<void> {
   if (content?.kind === "text" && content.text.startsWith("/")) {
-    const handled = await handleSlashCommand(account, senderId, replyTarget, content.text, contextToken);
+    const handled = await handleSlashCommand(senderId, replyTarget, content.text, contextToken);
     if (handled) return;
   }
 
@@ -382,18 +384,18 @@ async function handleMessage(
 
   if (processingUsers.has(senderId)) {
     try {
-      await sendTextMessage(account.baseUrl, account.token, replyTarget, "消息已收到，前一条正在处理中，请稍候。", contextToken);
+      await sendTextMessage(activeAccount.baseUrl, activeAccount.token, replyTarget, "消息已收到，前一条正在处理中，请稍候。", contextToken);
     } catch {}
   }
 
-  processQueue(account, senderId).catch((err) => logError(`Queue processing error: ${String(err)}`));
+  processQueue(senderId).catch((err) => logError(`Queue processing error: ${String(err)}`));
 }
 
 async function processOneMessage(
-  account: AccountData, senderId: string, replyTarget: string, content: ExtractedContent, contextToken: string,
+  senderId: string, replyTarget: string, content: ExtractedContent, contextToken: string,
 ): Promise<void> {
   if (!content) return;
-  const { baseUrl, token } = account;
+  const { baseUrl, token } = activeAccount;
 
   const abortController = new AbortController();
   userAbortControllers.set(senderId, abortController);
@@ -465,8 +467,8 @@ async function processOneMessage(
         thinking: getThinkingConfig(senderId),
         mcpServers: {
           "wechat-tools": {
-            command: "npx",
-            args: ["tsx", TOOLS_SCRIPT_PATH],
+            command: "node",
+            args: [TOOLS_SCRIPT_PATH],
             env: {
               WECHAT_SENDER_ID: replyTarget,
               WECHAT_CONTEXT_TOKEN: contextToken,
@@ -535,6 +537,7 @@ async function startPolling(account: AccountData): Promise<never> {
           try {
             const newAccount = await doQRReLogin(account);
             account = newAccount;
+            activeAccount = newAccount;
             baseUrl = newAccount.baseUrl;
             token = newAccount.token;
             getUpdatesBuf = "";
@@ -543,6 +546,8 @@ async function startPolling(account: AccountData): Promise<never> {
           } catch (err) {
             logError(`Re-login failed: ${String(err)}`);
             try { fs.unlinkSync(CREDENTIALS_FILE); } catch {}
+            persistContextTokens();
+            saveSessions();
             process.exit(1);
           }
         }
@@ -571,14 +576,14 @@ async function startPolling(account: AccountData): Promise<never> {
         const senderId = msg.from_user_id ?? "unknown";
         const isGroup = !!msg.group_id;
         const replyTarget = isGroup ? msg.group_id! : senderId;
+        const sessionKey = isGroup ? `${senderId}@${msg.group_id}` : senderId;
 
         if (msg.context_token) cacheContextToken(replyTarget, msg.context_token);
         const ct = getCachedContextToken(replyTarget);
         if (!ct) { log(`Skipping message (no context_token): ${senderId}`); continue; }
 
         log(`Message received: from=${senderId} kind=${content.kind}${content.kind === "text" ? ` text=${content.text.slice(0, 50)}` : ""}...`);
-        // Use senderId for session isolation, replyTarget for sending replies
-        handleMessage(account, senderId, replyTarget, content, ct).catch((err) => logError(`handleMessage error: ${String(err)}`));
+        handleMessage(sessionKey, replyTarget, content, ct).catch((err) => logError(`handleMessage error: ${String(err)}`));
       }
     } catch (err) {
       consecutiveFailures++;
@@ -623,6 +628,7 @@ async function main() {
     log(`Using saved account: ${account.accountId}`);
   }
 
+  activeAccount = account;
   await startPolling(account);
 }
 
@@ -638,4 +644,4 @@ function shutdown(): void {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
-main().catch((err) => { logError(`Fatal: ${String(err)}`); process.exit(1); });
+main().catch((err) => { logError(`Fatal: ${String(err)}`); persistContextTokens(); saveSessions(); process.exit(1); });

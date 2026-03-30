@@ -107,7 +107,7 @@ export async function getUploadUrl(
     body: JSON.stringify({ ...params, base_info: BASE_INFO }),
     token, timeoutMs: API_TIMEOUT_MS,
   });
-  return JSON.parse(raw);
+  try { return JSON.parse(raw); } catch { throw new Error(`getUploadUrl: invalid response: ${raw.slice(0, 200)}`); }
 }
 
 export async function uploadBufferToCdn(params: {

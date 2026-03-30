@@ -64,8 +64,6 @@ fi
 
 # ── MCP Config & Launch ──────────────────────────────────────────────────────
 
-WECHAT_SERVER="{\"command\":\"node\",\"args\":[\"$DIST_PATH\"]}"
-
 node -e "
 const fs = require('fs');
 const path = require('path');
@@ -73,9 +71,14 @@ const mcpPath = path.join(process.argv[1], '.mcp.json');
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(mcpPath, 'utf-8')); } catch {}
 if (!cfg.mcpServers) cfg.mcpServers = {};
-cfg.mcpServers.wechat = JSON.parse(process.argv[2]);
+cfg.mcpServers.wechat = { command: 'node', args: [process.argv[2]] };
 fs.writeFileSync(mcpPath, JSON.stringify(cfg, null, 2) + '\n');
-" "$WORK_DIR" "$WECHAT_SERVER"
+" "$WORK_DIR" "$DIST_PATH"
+
+if [ $? -ne 0 ]; then
+  echo "Error: failed to write .mcp.json" >&2
+  exit 1
+fi
 
 cd "$WORK_DIR"
 exec claude --dangerously-load-development-channels server:wechat --dangerously-skip-permissions

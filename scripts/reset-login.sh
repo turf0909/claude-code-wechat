@@ -1,10 +1,8 @@
 #!/bin/bash
 # Clear WeChat login state (credentials, cache, logs). Re-scan QR on next start.
 
-CREDENTIALS_DIR="${WECHAT_CREDENTIALS_FILE%/*}"
-if [ -z "$WECHAT_CREDENTIALS_FILE" ]; then
-  CREDENTIALS_DIR="$HOME/.claude/channels/wechat"
-fi
+CRED_FILE="${WECHAT_CREDENTIALS_FILE:-$HOME/.claude/channels/wechat/account.json}"
+CREDENTIALS_DIR="$(dirname "$CRED_FILE")"
 
 if [ -d "$CREDENTIALS_DIR" ]; then
   rm -rf "$CREDENTIALS_DIR"

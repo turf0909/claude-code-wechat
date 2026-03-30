@@ -288,8 +288,8 @@ async function startPolling(account: AccountData): Promise<never> {
             continue;
           } catch (err) {
             logError(`Re-login failed: ${String(err)}`);
-            // Remove invalid credentials so next startup triggers setup.js QR login
             try { fs.unlinkSync(CREDENTIALS_FILE); log("Removed invalid credentials"); } catch {}
+            persistContextTokens();
             process.exit(1);
           }
         }
@@ -364,16 +364,24 @@ async function startPolling(account: AccountData): Promise<never> {
           (async () => {
             const img = await downloadWechatImage(content.imageItem);
             if (img) {
-              const ext = mimeToExt(img.mimeType);
-              const imgPath = path.join(MEDIA_DIR, `img_${Date.now()}.${ext}`);
-              fs.writeFileSync(imgPath, img.buf);
-              log(`Image saved to: ${imgPath}`);
-              metaCopy.media_type = "image";
-              metaCopy.media_path = imgPath;
-              await mcp.notification({
-                method: "notifications/claude/channel",
-                params: { content: "[图片]", meta: metaCopy },
-              });
+              try {
+                const ext = mimeToExt(img.mimeType);
+                const imgPath = path.join(MEDIA_DIR, `img_${Date.now()}.${ext}`);
+                fs.writeFileSync(imgPath, img.buf);
+                log(`Image saved to: ${imgPath}`);
+                metaCopy.media_type = "image";
+                metaCopy.media_path = imgPath;
+                await mcp.notification({
+                  method: "notifications/claude/channel",
+                  params: { content: "[图片]", meta: metaCopy },
+                });
+              } catch (writeErr) {
+                logError(`Image save failed: ${String(writeErr)}`);
+                await mcp.notification({
+                  method: "notifications/claude/channel",
+                  params: { content: "[图片-保存失败]", meta: metaCopy },
+                });
+              }
             } else {
               await mcp.notification({
                 method: "notifications/claude/channel",
@@ -386,22 +394,30 @@ async function startPolling(account: AccountData): Promise<never> {
           const metaCopy = { ...meta };
           const fileName = content.fileName;
           (async () => {
-            const filePath = await downloadWechatFile(content.fileItem, fileName);
-            if (filePath) {
-              log(`File saved to: ${filePath}`);
-              metaCopy.media_type = "file";
-              metaCopy.media_path = filePath;
+            try {
+              const filePath = await downloadWechatFile(content.fileItem, fileName);
+              if (filePath) {
+                log(`File saved to: ${filePath}`);
+                metaCopy.media_type = "file";
+                metaCopy.media_path = filePath;
+                await mcp.notification({
+                  method: "notifications/claude/channel",
+                  params: { content: `[文件: ${fileName}]`, meta: metaCopy },
+                });
+              } else {
+                await mcp.notification({
+                  method: "notifications/claude/channel",
+                  params: { content: `[文件: ${fileName} - 下载失败]`, meta: metaCopy },
+                });
+              }
+            } catch (fileErr) {
+              logError(`File processing failed: ${String(fileErr)}`);
               await mcp.notification({
                 method: "notifications/claude/channel",
-                params: { content: `[文件: ${fileName}]`, meta: metaCopy },
-              });
-            } else {
-              await mcp.notification({
-                method: "notifications/claude/channel",
-                params: { content: `[文件: ${fileName} - 下载失败]`, meta: metaCopy },
+                params: { content: `[文件: ${fileName} - 处理失败]`, meta: metaCopy },
               });
             }
-          })().catch((err) => logError(`File processing error: ${String(err)}`));
+          })().catch((err) => logError(`File dispatch error: ${String(err)}`));
         }
       }
     } catch (err) {
@@ -477,5 +493,6 @@ process.on("SIGTERM", shutdown);
 
 main().catch((err) => {
   logError(`Fatal: ${String(err)}`);
+  persistContextTokens();
   process.exit(1);
 });
