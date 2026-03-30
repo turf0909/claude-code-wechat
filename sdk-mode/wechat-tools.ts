@@ -35,7 +35,7 @@ const MSG_ITEM_FILE = 4;
 const MSG_TYPE_BOT = 2;
 const MSG_STATE_FINISH = 2;
 
-const CHANNEL_VERSION = "0.2.0";
+const CHANNEL_VERSION = "0.3.0";
 
 type AccountData = { token: string; baseUrl: string; accountId: string };
 

@@ -45,7 +45,7 @@ ilink/bot/sendmessage -> WeChat user receives reply
 - WeChat ClawBot (supports iOS and Android)
 
 **Channel mode requires:**
-- [Claude Code](https://claude.com/claude-code) >= 2.1.80
+- [Claude Code](https://claude.com/claude-code) >= 2.1.80 (must run `claude login` first)
 
 **SDK mode requires:**
 - `ANTHROPIC_API_KEY` (from [Anthropic Console](https://console.anthropic.com/) or your API proxy)
@@ -75,10 +75,10 @@ Uses the Claude Agent SDK directly. Multi-user, slash commands, message queue. R
 
 ### Channel Mode
 
-Uses Claude Code CLI as the backend. Supports OAuth (no API Key needed).
+Uses Claude Code CLI as the backend. Supports both API Key and OAuth (if no API Key is set, falls back to OAuth).
 
 ```bash
-# Make sure you have Claude Code CLI installed and logged in: claude login
+# Requires claude login (for CLI auth), plus optionally ANTHROPIC_API_KEY in .env
 ./channel-mode/start.sh
 
 # Or with a working directory
@@ -87,9 +87,11 @@ Uses Claude Code CLI as the backend. Supports OAuth (no API Key needed).
 
 ### Authentication
 
-The startup scripts auto-detect authentication from `.env` (in project root):
+The startup scripts auto-detect API configuration from `.env` (in project root):
 1. `ANTHROPIC_API_KEY` set → use API Key (with optional `ANTHROPIC_BASE_URL` proxy)
-2. Nothing set → use Claude Code native OAuth (Channel mode only; run `claude login` first)
+2. Nothing set → use Claude Code's default API (Channel mode only)
+
+> Channel mode always requires `claude login` regardless of API Key settings. SDK mode only needs `ANTHROPIC_API_KEY`.
 
 > `.env` is gitignored and won't be committed. See `.env.example` for all options.
 
@@ -173,7 +175,7 @@ tmux kill-session -t wechat
 
 | | Channel Mode (`channel-mode/start.sh`) | SDK Mode (`sdk-mode/start.sh`) |
 |---|---|---|
-| Authentication | OAuth or API Key | **API Key only** |
+| Authentication | `claude login` + optional API Key | **API Key only** |
 | Claude Code CLI | Required | **Not required** |
 | Multi-user sessions | No (shared session) | **Yes** |
 | Slash commands | No | **Yes** |

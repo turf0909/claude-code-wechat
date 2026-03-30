@@ -28,7 +28,7 @@ import {
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const CHANNEL_NAME = "wechat";
-const CHANNEL_VERSION = "0.2.0";
+const CHANNEL_VERSION = "0.3.0";
 const DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
 const BOT_TYPE = "3";
 const CREDENTIALS_FILE = process.env.WECHAT_CREDENTIALS_FILE
